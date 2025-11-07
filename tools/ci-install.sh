@@ -54,7 +54,7 @@ fi
 have_system_meson=
 
 if [ -n "${dbus_ci_system_python-}" ]; then
-    if [ -z "${dbus_ci_system_python_module_suffix-}" ]; then
+    if [ -z "${dbus_ci_system_python_module_suffix+set}" ]; then
         case "$dbus_ci_system_python}" in
             (*-dbg)
                 dbus_ci_system_python_module_suffix=-dbg
@@ -84,6 +84,7 @@ case "$ci_distro" in
             docbook-xml \
             docbook-xsl \
             gcc \
+            git \
             gnome-desktop-testing \
             libdbus-1-dev \
             libglib2.0-dev \
@@ -121,7 +122,7 @@ case "$ci_distro" in
         esac
 
         case "$ci_suite" in
-            (buster|focal)
+            (buster|focal|bullseye)
                 ninja=ninja==1.10.2.4
                 ;;
 
@@ -133,10 +134,10 @@ case "$ci_distro" in
         esac
 
         # Needed for distcheck
-        case "$ci_suite" in
-            (buster|focal|bullseye|jammy)
+        case "$ci_suite:$dbus_ci_system_python" in
+            (buster:*|focal:*|bullseye:*|jammy:*)
                 "${dbus_ci_system_python-python3}" -m pip install --user \
-                    pyproject_metadata \
+                    "pyproject_metadata==0.9.0" \
                     tomli \
                     ${NULL}
                 ;;
@@ -144,7 +145,6 @@ case "$ci_distro" in
             (*)
                 $sudo apt-get -qq -y install \
                     python3-pyproject-metadata \
-                    python3-tomli \
                     ${NULL}
                 ;;
         esac

@@ -5,6 +5,7 @@ abs_top_srcdir = @abs_top_srcdir@
 abs_top_builddir = @abs_top_builddir@
 installed_testdir = ${libexecdir}/installed-tests/${PACKAGE_TARNAME}
 installed_test_testdir = ${installed_testdir}/test
+installed_test_servicedir = ${installed_testdir}/test/services
 installed_test_metadir = ${datadir}/installed-tests/${PACKAGE_TARNAME}
 
 AM_DISTCHECK_CONFIGURE_FLAGS = PYTHON=$(PYTHON) --with-python-prefix='$${prefix}' --with-python-exec-prefix='$${exec_prefix}'
@@ -42,17 +43,19 @@ EXTRA_DIST = \
 	pyproject.toml \
 	setup.cfg \
 	setup.py \
-	test/TestSuitePythonService.service.in \
 	test/compiled.test.in \
 	test/installable/meson.build \
 	test/meson.build \
 	test/py.test.in \
 	test/sh.test.in \
+	test/services/TestSuitePythonService.service.in \
+	test/services/meson.build \
 	test/tmp-session-bus.conf.in \
 	tools/check-c-style.sh \
 	tools/check-coding-style.mk \
 	tools/check-py-style.sh \
 	tools/check-whitespace.sh \
+	tools/dist.sh \
 	tools/generate-pkginfo.py \
 	$(NULL)
 
@@ -61,6 +64,7 @@ EXTRA_DIST = \
 AM_CPPFLAGS = \
 	-include config.h \
 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/dbus_bindings \
 	-I$(top_srcdir)/subprojects \
 	-I$(top_srcdir)/subprojects/dbus-gmain \
 	$(DBUS_CFLAGS) \
@@ -279,7 +283,6 @@ test_programs = \
 	$(NULL)
 
 test_test_import_repeatedly_SOURCES = test/import-repeatedly.c
-test_test_import_repeatedly_CPPFLAGS = $(PYTHON_CPPFLAGS)
 test_test_import_repeatedly_LDADD = $(PYTHON_LIBS) $(PYTHON_EXTRA_LIBS)
 test_test_import_repeatedly_LDFLAGS = $(PYTHON_EXTRA_LDFLAGS)
 
@@ -290,16 +293,20 @@ TESTS = \
 	$(NULL)
 
 noinst_DATA = \
-	test/TestSuitePythonService.service \
+	test/services/TestSuitePythonService.service \
 	test/tmp-session-bus.conf \
 	$(NULL)
 CLEANFILES += $(noinst_DATA)
 
 installed_test_test_data = \
-	test/installable/TestSuitePythonService.service \
 	test/installable/tmp-session-bus.conf \
 	$(NULL)
 CLEANFILES += $(installed_test_test_data)
+
+installed_test_service_data = \
+	test/installable/services/TestSuitePythonService.service \
+	$(NULL)
+CLEANFILES += $(installed_test_service_data)
 
 $(noinst_DATA): test/%: test/%.in
 	@$(MKDIR_P) $(dir $@)
@@ -312,9 +319,14 @@ $(noinst_DATA): test/%: test/%.in
 $(installed_test_test_data): test/installable/%: test/%.in
 	@$(MKDIR_P) $(dir $@)
 	$(AM_V_GEN)$(SED) \
+		-e 's|[@]G_TEST_BUILDDIR[@]|$(installed_testdir)|g' \
+		$< > $@
+
+$(installed_test_service_data): test/installable/%: test/%.in
+	@$(MKDIR_P) $(dir $@)
+	$(AM_V_GEN)$(SED) \
 		-e 's|[@]PYTHON[@]|$(PYTHON)|g' \
 		-e 's|[@]G_TEST_SRCDIR[@]|$(installed_testdir)|g' \
-		-e 's|[@]G_TEST_BUILDDIR[@]|$(installed_testdir)|g' \
 		$< > $@
 
 if ENABLE_INSTALLED_TESTS
@@ -328,6 +340,7 @@ nobase_dist_installed_test_PYTHON = \
 	$(dist_test_extra_python) \
 	$(NULL)
 installed_test_test_DATA = $(installed_test_test_data)
+installed_test_service_DATA = $(installed_test_service_data)
 installed_test_meta_DATA = $(installed_test_metadata)
 else
 noinst_PROGRAMS = $(test_programs)
@@ -369,23 +382,8 @@ $(patsubst %,%.test,$(test_programs)): %.test: Makefile
 # === Documentation ===
 
 dist-hook:
-	echo $(VERSION) > $(distdir)/.version
-	$(MKDIR_P) $(distdir)/dbus_python.egg-info
-	touch $(distdir)/MANIFEST
-	touch $(distdir)/MANIFEST.in
-	touch $(distdir)/dbus_python.egg-info/SOURCES.txt
-	$(PYTHON) $(distdir)/tools/generate-pkginfo.py $(VERSION) $(distdir)/PKG-INFO
-	echo > $(distdir)/dbus_python.egg-info/dependency_links.txt
-	echo _dbus_bindings > $(distdir)/dbus_python.egg-info/top_level.txt
-	echo _dbus_glib_bindings >> $(distdir)/dbus_python.egg-info/top_level.txt
-	echo dbus >> $(distdir)/dbus_python.egg-info/top_level.txt
-	cp $(distdir)/PKG-INFO $(distdir)/dbus_python.egg-info/PKG-INFO
-	( cd $(distdir) && find -type d -o -print ) | \
-		LC_ALL=C sort | \
-		$(SED) -e 's|^\./||' \
-		> $(distdir)/MANIFEST
-	sed -e 's/.*/include &/' < $(distdir)/MANIFEST > $(distdir)/MANIFEST.in
-	cp $(distdir)/MANIFEST $(distdir)/dbus_python.egg-info/SOURCES.txt
+	MESON_PROJECT_DIST_ROOT="${distdir}" \
+	$(srcdir)/tools/dist.sh "${VERSION}" "${PYTHON}"
 
 maintainer-upload:
 	rsync -tvpP --chmod=ugo=r $(DIST_ARCHIVES) $(DIST_ARCHIVES:%=%.asc) \
